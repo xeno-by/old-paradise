@@ -1,5 +1,7 @@
 import sbt._
 import Keys._
+import sbtassembly.Plugin._
+import AssemblyKeys._
 
 object build extends Build {
   lazy val sharedSettings = Defaults.defaultSettings ++ Seq(
@@ -69,13 +71,32 @@ object build extends Build {
   ) settings (
     sharedSettings : _*
   ) settings (
+    assemblySettings : _*
+  ) settings (
     resourceDirectory in Compile <<= baseDirectory(_ / "src" / "main" / "scala" / "org" / "scalamacros" / "paradise" / "embedded"),
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-library" % _),
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-reflect" % _),
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-compiler" % _),
-    // TODO: how to I make this recursion work?
-    // run <<= run in Compile in sandbox,
-    // test <<= test in Test in tests
+    libraryDependencies += "org.scalameta" %% "scalameta" % "0.1.0-SNAPSHOT",
+    test in assembly := {},
+    logLevel in assembly := Level.Error,
+    jarName in assembly := name.value + "_" + scalaVersion.value + "-" + version.value + "-assembly.jar",
+    assemblyOption in assembly ~= { _.copy(includeScala = false) },
+    Keys.`package` in Compile := {
+      val slimJar = (Keys.`package` in Compile).value
+      val fatJar = new File(crossTarget.value + "/" + (jarName in assembly).value)
+      val _ = assembly.value
+      IO.copy(List(fatJar -> slimJar), overwrite = true)
+      slimJar
+    },
+    packagedArtifact in Compile in packageBin := {
+      val temp = (packagedArtifact in Compile in packageBin).value
+      val (art, slimJar) = temp
+      val fatJar = new File(crossTarget.value + "/" + (jarName in assembly).value)
+      val _ = assembly.value
+      IO.copy(List(fatJar -> slimJar), overwrite = true)
+      (art, slimJar)
+    },
     publishMavenStyle := true,
     publishArtifact in Test := false,
     publishTo <<= version { v: String =>
