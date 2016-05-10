@@ -139,9 +139,10 @@ object build extends Build {
     unmanagedSourceDirectories in Test <<= (scalaSource in Test) { (root: File) =>
       // TODO: I haven't yet ported negative tests to SBT, so for now I'm excluding them
       val (anns :: Nil, others) = root.listFiles.toList.partition(_.getName == "annotations")
-      val (negAnns, otherAnns) = anns.listFiles.toList.partition(_.getName == "neg")
-      System.setProperty("sbt.paths.tests.scaladoc", anns.listFiles.toList.filter(_.getName == "scaladoc").head.getAbsolutePath)
-      otherAnns ++ others
+      val oldAnns = anns.listFiles.find(_.getName == "old").get
+      val (oldNegAnns, oldOtherAnns) = oldAnns.listFiles.toList.partition(_.getName == "neg")
+      System.setProperty("sbt.paths.tests.scaladoc", oldAnns.listFiles.toList.filter(_.getName == "scaladoc").head.getAbsolutePath)
+      oldOtherAnns ++ others
     },
     fullClasspath in Test := {
       val testcp = (fullClasspath in Test).value.files.map(_.getAbsolutePath).mkString(java.io.File.pathSeparatorChar.toString)
