@@ -49,6 +49,20 @@ object build extends Build {
     }
   }
 
+  lazy val root = Project(
+    id = "root",
+    base = file("root")
+  ) settings (
+    sharedSettings : _*
+  ) settings (
+    packagedArtifacts := Map.empty,
+    aggregate in test := false,
+    test := (test in tests in Test).value
+  ) aggregate (
+    plugin,
+    tests
+  )
+
   lazy val plugin = Project(
     id   = "paradise",
     base = file("plugin")
@@ -111,16 +125,6 @@ object build extends Build {
       val dummy = "-Jdummy=" + jar.lastModified
       Seq(addPlugin, dummy)
     }
-  )
-
-  lazy val sandbox = Project(
-    id   = "sandbox",
-    base = file("sandbox")
-  ) settings (
-    sharedSettings ++ usePluginSettings: _*
-  ) settings (
-    libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-reflect" % _),
-    publishArtifact in Compile := false
   )
 
   lazy val tests = Project(
