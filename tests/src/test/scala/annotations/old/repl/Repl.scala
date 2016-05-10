@@ -1,19 +1,4 @@
-import org.scalatest.FunSuite
-
-import scala.tools.nsc.Settings
-import scala.tools.nsc.interpreter._
-
-class Repl extends FunSuite {
-  private def repl(code: String): String = {
-    val s = new Settings
-    s.Xnojline.value = true
-    s.usejavacp.value = false
-    s.classpath.value = sys.props("sbt.paths.tests.classpath")
-    s.plugin.value = List(sys.props("sbt.paths.plugin.jar"))
-    val lines = ILoop.runForTranscript(code, s).lines.toList
-    lines.drop(3).dropRight(2).map(_.replaceAll("\\s+$","")).mkString("\n").trim.stripSuffix("scala>").trim
-  }
-
+class Repl extends ReplSuite {
   test("precompiled macros expand") {
     assert(repl("""
       |@thingy class Thingy
