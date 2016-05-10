@@ -145,8 +145,10 @@ object build extends Build {
       val (anns :: Nil, others) = root.listFiles.toList.partition(_.getName == "annotations")
       val oldAnns = anns.listFiles.find(_.getName == "old").get
       val (oldNegAnns, oldOtherAnns) = oldAnns.listFiles.toList.partition(_.getName == "neg")
+      val newAnns = anns.listFiles.find(_.getName == "new").get
+      val newAllAnns = newAnns.listFiles.toList
       System.setProperty("sbt.paths.tests.scaladoc", oldAnns.listFiles.toList.filter(_.getName == "scaladoc").head.getAbsolutePath)
-      oldOtherAnns ++ others
+      others ++ oldOtherAnns ++ newAllAnns
     },
     fullClasspath in Test := {
       val testcp = (fullClasspath in Test).value.files.map(_.getAbsolutePath).mkString(java.io.File.pathSeparatorChar.toString)
