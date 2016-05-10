@@ -33,9 +33,9 @@ abstract class SyntaxAnalyzer extends NscSyntaxAnalyzer {
     override def isExprIntroToken(token: Token) = !isInline && super.isExprIntroToken(token)
     override def isDclIntro: Boolean = isInline || super.isDclIntro
 
-    private def markInline(mods: Modifiers): Modifiers = {
+    private def markInline(offset: Offset, mods: Modifiers): Modifiers = {
       val metaInlineAnnot = Select(Select(Select(Ident(TermName("_root_")), TermName("scala")), TermName("meta")), TypeName("inline"))
-      mods.withAnnotations(List(Apply(Select(New(metaInlineAnnot), nme.CONSTRUCTOR), Nil)))
+      mods.withAnnotations(List(atPos(offset)(Apply(Select(New(metaInlineAnnot), nme.CONSTRUCTOR), Nil))))
     }
 
     private def invoke(name: String, args: Any*): Any = {
@@ -50,8 +50,9 @@ abstract class SyntaxAnalyzer extends NscSyntaxAnalyzer {
     override def modifiers(): Modifiers = normalizeModifiers {
       def loop(mods: Modifiers): Modifiers = in.token match {
         case IDENTIFIER if isInline =>
+          val offset = in.offset
           in.nextToken()
-          loop(markInline(mods))
+          loop(markInline(offset, mods))
         case PRIVATE | PROTECTED =>
           loop(accessQualifierOpt(addMod(mods, flagTokens(in.token), tokenRange(in))))
         case ABSTRACT | FINAL | SEALED | OVERRIDE | IMPLICIT | LAZY =>
@@ -66,7 +67,7 @@ abstract class SyntaxAnalyzer extends NscSyntaxAnalyzer {
     }
     override def localModifiers(): Modifiers = {
       def loop(mods: Modifiers): Modifiers = {
-        if (isInline) { in.nextToken(); loop(markInline(mods)) }
+        if (isInline) { val offset = in.offset; in.nextToken(); loop(markInline(offset, mods)) }
         else if (isLocalModifier) loop(addMod(mods, flagTokens(in.token), tokenRange(in)))
         else mods
       }

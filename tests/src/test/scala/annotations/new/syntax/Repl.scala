@@ -10,7 +10,7 @@ class NewRepl extends ReplSuite {
       |}
       |<console>:12: error: object meta is not a member of package scala
       |         inline def apply(x: Int)(defns: Any) = ???
-      |                    ^
+      |         ^
     """.stripMargin.trim)
   }
 }
