@@ -10,5 +10,7 @@ trait ParadiseAnalyzer extends NscAnalyzer {
 
   override def newTyper(context: Context) = new ParadiseTyper(context)
   class ParadiseTyper(context0: Context) extends Typer(context0) {
+    // TODO: Looks like we don't need to hijack the analyzer for a simple implementation to work.
+    // However, I'll still keep this here, because the hijack is likely to be useful soon.
   }
 }
