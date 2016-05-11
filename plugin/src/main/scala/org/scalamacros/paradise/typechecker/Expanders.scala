@@ -4,12 +4,20 @@ package typechecker
 trait Expanders {
   self: AnalyzerPlugins =>
 
+  import scala.{Seq => _}
+  import scala.collection.immutable.Seq
+  import scala.util.control.ControlThrowable
   import global._
   import analyzer._
+  import ErrorUtils._
   import definitions._
   import scala.reflect.internal.Flags._
   import scala.reflect.internal.Mode._
+  import scala.reflect.runtime.ReflectionUtils
   import analyzer.{Namer => NscNamer}
+  import scala.meta.{Input => MetaInput, Position => MetaPosition}
+  import scala.meta.{Tree => MetaTree, Source => MetaSource, Transformer => MetaTransformer}
+  import scala.meta.internal.prettyprinters.{Positions => MetaPositions}
 
   def mkExpander(namer0: NscNamer) = new { val namer: NscNamer = namer0 } with Namer with Expander
   trait Expander {
@@ -19,15 +27,7 @@ trait Expanders {
     import namer._
     val expanderErrorGen = new ErrorGen(namer.typer)
     import expanderErrorGen._
-
-    def prepareOldAnnotationMacro(ann: Tree, mann: Symbol, sym: Symbol, annottee: Tree, expandee: Tree): Tree = {
-      val companion = if (expandee.isInstanceOf[ClassDef]) patchedCompanionSymbolOf(sym, context) else NoSymbol
-      val companionSource = if (!isWeak(companion)) attachedSource(companion) else EmptyTree
-      val expandees = List(annottee, expandee, companionSource).distinct.filterNot(_.isEmpty)
-      val safeExpandees = expandees.map(expandee => duplicateAndKeepPositions(expandee)).map(_.setSymbol(NoSymbol))
-      val prefix = Select(ann, nme.macroTransform) setSymbol mann.info.member(nme.macroTransform) setPos ann.pos
-      Apply(prefix, safeExpandees) setPos ann.pos
-    }
+    import namer.typer.TyperErrorGen._
 
     def expandOldAnnotationMacro(original: Tree, annotationSym: Symbol, annotationTree: Tree, expandees: List[Tree]): Option[List[Tree]] = {
       def onlyIfExpansionAllowed[T](expand: => Option[T]): Option[T] = {
@@ -71,12 +71,88 @@ trait Expanders {
       extractAndValidateExpansions(original, annotationTree, () => onlyIfExpansionAllowed(expand()))
     }
 
+    // TODO: a full-fledged reflect <-> meta converter is necessary for robust operation here
     def expandNewAnnotationMacro(original: Tree, annotationSym: Symbol, annotationTree: Tree, expandees: List[Tree]): Option[List[Tree]] = {
-      println(original)
-      println(annotationSym)
-      println(annotationTree)
-      println(expandees)
-      ???
+      def expand(): Option[Tree] = {
+        try {
+          val input = original.pos.source
+          val metaInput = {
+            if (input.file.file != null) MetaInput.File(input.file.file)
+            else MetaInput.String(new String(input.content)) // NOTE: can happen in REPL or in custom Global
+          }
+          val metaSource = metaInput.parse[MetaSource].get
+          def toMeta(tree: Tree): MetaTree = {
+            def captures(metaPos: MetaPosition, pos: Position) = metaPos.start.offset <= pos.point && pos.point <= metaPos.end.offset
+            metaSource.traverse { case metaTree: MetaTree if metaTree != metaSource && captures(metaTree.pos, tree.pos) => return metaTree }
+            sys.error(s"fatal error: couldn't find ${tree.pos.toString} in ${metaSource.show[MetaPositions]}")
+          }
+
+          val treeInfo.Applied(Select(New(_), nme.CONSTRUCTOR), targs, vargss) = annotationTree
+          val metaTargs = targs.map(toMeta)
+          val metaVargss = vargss.map(_.map(toMeta))
+          val metaExpandees = {
+            if (expandees.length != 1) sys.error("fatal error: multiple expandees not supported at the moment")
+            val metaOriginal = toMeta(original)
+            val metaOriginalWithoutAnnots = metaOriginal.transform {
+              // TODO: detect and remove just annotteeTree
+              case defn: scala.meta.Decl.Val => defn.copy(mods = Nil)
+              case defn: scala.meta.Decl.Var => defn.copy(mods = Nil)
+              case defn: scala.meta.Decl.Def => defn.copy(mods = Nil)
+              case defn: scala.meta.Decl.Type => defn.copy(mods = Nil)
+              case defn: scala.meta.Defn.Val => defn.copy(mods = Nil)
+              case defn: scala.meta.Defn.Var => defn.copy(mods = Nil)
+              case defn: scala.meta.Defn.Def => defn.copy(mods = Nil)
+              case defn: scala.meta.Defn.Macro => defn.copy(mods = Nil)
+              case defn: scala.meta.Defn.Type => defn.copy(mods = Nil)
+              case defn: scala.meta.Defn.Class => defn.copy(mods = Nil)
+              case defn: scala.meta.Defn.Trait => defn.copy(mods = Nil)
+              case defn: scala.meta.Defn.Object => defn.copy(mods = Nil)
+            }
+            List(metaOriginalWithoutAnnots)
+          }
+          val metaArgs = metaTargs ++ metaVargss.flatten ++ metaExpandees
+
+          val classloader = {
+            val m_findMacroClassLoader = analyzer.getClass.getMethods().find(_.getName == "findMacroClassLoader").get
+            m_findMacroClassLoader.setAccessible(true)
+            m_findMacroClassLoader.invoke(analyzer).asInstanceOf[ClassLoader]
+          }
+          val annotationModuleClass = {
+            try Class.forName(annotationSym.fullName + "$", true, classloader)
+            catch {
+              case ex: Throwable =>
+              issueNormalTypeError(annotationTree, MacroAnnotationNotExpandedMessage)(namer.context)
+              throw MacroExpansionException
+            }
+          }
+          val annotationModule = annotationModuleClass.getField("MODULE$").get(null)
+          val newStyleMacroMeth = annotationModuleClass.getDeclaredMethods().find(_.getName == "apply$impl").get
+          newStyleMacroMeth.setAccessible(true)
+          val metaExpansion = {
+            // NOTE: this method is here for correct stacktrace unwrapping
+            def macroExpandWithRuntime() = {
+              try newStyleMacroMeth.invoke(annotationModule, metaArgs.asInstanceOf[List[AnyRef]].toArray: _*).asInstanceOf[MetaTree]
+              catch {
+                case ex: Throwable =>
+                  val realex = ReflectionUtils.unwrapThrowable(ex)
+                  realex match {
+                    case ex: ControlThrowable => throw ex
+                    case _ => MacroGeneratedException(annotationTree, realex)
+                  }
+              }
+            }
+            macroExpandWithRuntime()
+          }
+
+          val stringExpansion = metaExpansion.toString
+          val parser = newUnitParser(new CompilationUnit(newSourceFile(stringExpansion, "<macro>")))
+          Some(gen.mkTreeOrBlock(parser.parseStatsOrPackages()))
+        } catch {
+          // NOTE: this means an error that has been caught and reported
+          case MacroExpansionException => None
+        }
+      }
+      extractAndValidateExpansions(original, annotationTree, () => expand())
     }
 
     private def extractAndValidateExpansions(original: Tree, annotation: Tree, computeExpansion: () => Option[Tree]): Option[List[Tree]] = {
