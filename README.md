@@ -4,7 +4,7 @@
 
 ![](https://dl.dropboxusercontent.com/s/zqe336e8hm0595s/Screenshot%202016-05-10%2012.40.48.png?dl=0)
 
-**Update**. Half a day later, mission has been accomplished. Results can be reproduced with scala.meta 0.1.0-SNAPSHOT via [commit e124c82](https://github.com/scalameta/scalameta/tree/e124c8264e5c61025b71e358d7facfc77205aae3) and macro paradise 3.0.0-SNAPSHOT via [commit f22246f](https://github.com/scalameta/paradise/tree/f22246fd94ce69f4e7886660c42d81953143c8d9).
+**Update**. Half a day later, the mission has been accomplished. Results can be reproduced with scala.meta 0.20.0 and macro paradise 3.0.0-M1.
 ```
 $ cat Macros.scala
 import scala.meta._
