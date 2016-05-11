@@ -34,8 +34,9 @@ abstract class SyntaxAnalyzer extends NscSyntaxAnalyzer {
     override def isDclIntro: Boolean = isInline || super.isDclIntro
 
     private def markInline(offset: Offset, mods: Modifiers): Modifiers = {
-      val metaInlineAnnot = Select(Select(Select(Ident(TermName("_root_")), TermName("scala")), TermName("meta")), TypeName("inline"))
-      mods.withAnnotations(List(atPos(offset)(Apply(Select(New(metaInlineAnnot), nme.CONSTRUCTOR), Nil))))
+      val metaInlineAnnot = rootMirror.getClassIfDefined("scala.meta.internal.inline.inline")
+      if (metaInlineAnnot != NoSymbol) mods.withAnnotations(List(atPos(offset)(New(metaInlineAnnot))))
+      else { syntaxError(offset, "new-style (\"inline\") macros require scala.meta"); mods }
     }
 
     private def invoke(name: String, args: Any*): Any = {
