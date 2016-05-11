@@ -355,15 +355,20 @@ trait Namers {
             val treeInfo.Applied(Select(New(tpt), nme.CONSTRUCTOR), _, _) = annotation
             val mann = probeMacroAnnotation(context, tpt)
             if (mann.isMacroAnnotation && context.macrosEnabled) {
-              assert(!currentRun.compiles(mann), mann)
-              val annm = prepareAnnotationMacro(annotation, mann, sym, annottee, maybeExpandee)
-              expandAnnotationMacro(tree, annm)
               // if we encounter an error, we just return None, so that other macro annotations can proceed
               // this is unlike macroExpand1 when any error in an expandee blocks expansions
               // there it's necessary in order not to exacerbate typer errors
               // but when manning we aren't in typer, so we don't have to do as macroExpand1 does
               // and also there's a good reason not to ban other macro annotations
               // if we do ban them, we might get spurious compilation errors from non-existent members that could've been generated
+              assert(!currentRun.compiles(mann), mann)
+              val companion = if (maybeExpandee.isInstanceOf[ClassDef]) patchedCompanionSymbolOf(sym, context) else NoSymbol
+              val companionSource = if (!isWeak(companion)) attachedSource(companion) else EmptyTree
+              val unsafeExpandees = List(annottee, maybeExpandee, companionSource).distinct.filterNot(_.isEmpty)
+              val expandees = unsafeExpandees.map(duplicateAndKeepPositions).map(_.setSymbol(NoSymbol))
+              if (mann.isOldMacroAnnotation) expandOldAnnotationMacro(tree, mann, annotation, expandees)
+              else if (mann.isNewMacroAnnotation) expandNewAnnotationMacro(tree, mann, annotation, expandees)
+              else None
             } else {
               None
             }
@@ -482,88 +487,93 @@ trait Namers {
       if (tpt.hasSymbolField && tpt.symbol != NoSymbol) tpt.symbol
       else tpt match {
         case Ident(name) =>
-
-          // STEP 1: RESOLVE THE NAME IN SCOPE
-          var defSym: Symbol = NoSymbol
-          var defEntry: ScopeEntry = null
-          var cx = context
-          while (defSym == NoSymbol && cx != NoContext && (cx.scope ne null)) {
-            defEntry = cx.scope.lookupEntry(name)
-            if ((defEntry ne null) && qualifies(defEntry.sym)) defSym = defEntry.sym
-            else {
-              cx = cx.enclClass
-              val foundSym = member(cx.prefix, name) filter qualifies
-              defSym = foundSym filter (isAccessible(cx, _))
-              if (defSym == NoSymbol) cx = cx.outer
-            }
-          }
-          if (defSym == NoSymbol && settings.exposeEmptyPackage) {
-            defSym = rootMirror.EmptyPackageClass.info member name
-          }
-
-          // STEP 2: RESOLVE THE NAME IN IMPORTS
-          val symDepth = if (defEntry eq null) cx.depth
-                         else cx.depth - ({
-                           if (cx.scope ne null) cx.scope.nestingLevel
-                           else 0 // TODO: fix this in toolboxes, not hack around here
-                         } - defEntry.owner.nestingLevel)
-          var impSym: Symbol = NoSymbol
-          var imports = context.imports
-          while (!reallyExists(impSym) && !imports.isEmpty && imports.head.depth > symDepth) {
-            impSym = importedSymbol(imports.head, name)
-            if (!exists(impSym)) imports = imports.tail
-          }
-
-          // FIXME: repl hack. somehow imports that come from repl are doubled
-          // e.g. after `import $line7.$read.$iw.$iw.foo` you'll have another identical `import $line7.$read.$iw.$iw.foo`
-          // this is a crude workaround for the issue
-          imports match {
-            case fst :: snd :: _ if exists(impSym) && fst == snd => imports = imports.tail
-            case _ => // do nothing
-          }
-
-          // STEP 3: TRY TO RESOLVE AMBIGUITIES
-          if (exists(defSym) && exists(impSym)) {
-            if (defSym.isDefinedInPackage &&
-                (!currentRun.compiles(defSym) ||
-                 context.unit.exists && defSym.sourceFile != context.unit.source.file))
-              defSym = NoSymbol
-            else if (impSym.isError || impSym.name == nme.CONSTRUCTOR)
-              impSym = NoSymbol
-          }
-          if (!exists(defSym) && exists(impSym)) {
-            var impSym1: Symbol = NoSymbol
-            var imports1 = imports.tail
-            while (!imports1.isEmpty &&
-                   (!imports.head.isExplicitImport(name) ||
-                    imports1.head.depth == imports.head.depth)) {
-              impSym1 = importedSymbol(imports1.head, name)
-              if (reallyExists(impSym1)) {
-                if (imports1.head.isExplicitImport(name)) {
-                  if (imports.head.isExplicitImport(name) ||
-                      imports1.head.depth != imports.head.depth) return NoSymbol // was possibly fixable ambiguous import
-                  impSym = impSym1
-                  imports = imports1
-                } else if (!imports.head.isExplicitImport(name) &&
-                           imports1.head.depth == imports.head.depth) return NoSymbol // was possibly fixable ambiguous import
+          def resolve(name: Name): Symbol = {
+            // STEP 1: RESOLVE THE NAME IN SCOPE
+            var defSym: Symbol = NoSymbol
+            var defEntry: ScopeEntry = null
+            var cx = context
+            while (defSym == NoSymbol && cx != NoContext && (cx.scope ne null)) {
+              defEntry = cx.scope.lookupEntry(name)
+              if ((defEntry ne null) && qualifies(defEntry.sym)) defSym = defEntry.sym
+              else {
+                cx = cx.enclClass
+                val foundSym = member(cx.prefix, name) filter qualifies
+                defSym = foundSym filter (isAccessible(cx, _))
+                if (defSym == NoSymbol) cx = cx.outer
               }
-              imports1 = imports1.tail
+            }
+            if (defSym == NoSymbol && settings.exposeEmptyPackage) {
+              defSym = rootMirror.EmptyPackageClass.info member name
+            }
+
+            // STEP 2: RESOLVE THE NAME IN IMPORTS
+            val symDepth = if (defEntry eq null) cx.depth
+                           else cx.depth - ({
+                             if (cx.scope ne null) cx.scope.nestingLevel
+                             else 0 // TODO: fix this in toolboxes, not hack around here
+                           } - defEntry.owner.nestingLevel)
+            var impSym: Symbol = NoSymbol
+            var imports = context.imports
+            while (!reallyExists(impSym) && !imports.isEmpty && imports.head.depth > symDepth) {
+              impSym = importedSymbol(imports.head, name)
+              if (!exists(impSym)) imports = imports.tail
+            }
+
+            // FIXME: repl hack. somehow imports that come from repl are doubled
+            // e.g. after `import $line7.$read.$iw.$iw.foo` you'll have another identical `import $line7.$read.$iw.$iw.foo`
+            // this is a crude workaround for the issue
+            imports match {
+              case fst :: snd :: _ if exists(impSym) && fst == snd => imports = imports.tail
+              case _ => // do nothing
+            }
+
+            // STEP 3: TRY TO RESOLVE AMBIGUITIES
+            if (exists(defSym) && exists(impSym)) {
+              if (defSym.isDefinedInPackage &&
+                  (!currentRun.compiles(defSym) ||
+                   context.unit.exists && defSym.sourceFile != context.unit.source.file))
+                defSym = NoSymbol
+              else if (impSym.isError || impSym.name == nme.CONSTRUCTOR)
+                impSym = NoSymbol
+            }
+            if (!exists(defSym) && exists(impSym)) {
+              var impSym1: Symbol = NoSymbol
+              var imports1 = imports.tail
+              while (!imports1.isEmpty &&
+                     (!imports.head.isExplicitImport(name) ||
+                      imports1.head.depth == imports.head.depth)) {
+                impSym1 = importedSymbol(imports1.head, name)
+                if (reallyExists(impSym1)) {
+                  if (imports1.head.isExplicitImport(name)) {
+                    if (imports.head.isExplicitImport(name) ||
+                        imports1.head.depth != imports.head.depth) return NoSymbol // was possibly fixable ambiguous import
+                    impSym = impSym1
+                    imports = imports1
+                  } else if (!imports.head.isExplicitImport(name) &&
+                             imports1.head.depth == imports.head.depth) return NoSymbol // was possibly fixable ambiguous import
+                }
+                imports1 = imports1.tail
+              }
+            }
+
+            // STEP 4: DEAL WITH WHAT WE HAVE
+            if (exists(defSym) && !exists(impSym)) defSym
+            else if (exists(defSym) && exists(impSym)) NoSymbol // was ambiguous import
+            else if (!exists(defSym) && exists(impSym)) impSym
+            else {
+              val lastTry = rootMirror.missingHook(rootMirror.RootClass, name)
+              if (lastTry != NoSymbol && isAccessible(context, lastTry)) lastTry
+              else NoSymbol
             }
           }
-
-          // STEP 4: DEAL WITH WHAT WE HAVE
-          if (exists(defSym) && !exists(impSym)) defSym
-          else if (exists(defSym) && exists(impSym)) NoSymbol // was ambiguous import
-          else if (!exists(defSym) && exists(impSym)) impSym
-          else {
-            val lastTry = rootMirror.missingHook(rootMirror.RootClass, name)
-            if (lastTry != NoSymbol && isAccessible(context, lastTry)) lastTry
-            else NoSymbol
-          }
+          resolve(name).orElse(resolve(name.toTermName))
         case Select(qualtree, name) => // TODO: be more precise wrt typedSelect
-          val qual = probeMacroAnnotation(context, qualtree)
-          val sym = if (canDefineMann(qual)) member(qual.tpe, name) else NoSymbol
-          if (reallyExists(sym) && isAccessible(context, sym)) sym else NoSymbol
+          def resolve(name: Name): Symbol = {
+            val qual = probeMacroAnnotation(context, qualtree)
+            val sym = if (canDefineMann(qual)) member(qual.tpe, name) else NoSymbol
+            if (reallyExists(sym) && isAccessible(context, sym)) sym else NoSymbol
+          }
+          resolve(name).orElse(resolve(name.toTermName))
         case AppliedTypeTree(tpt, _) => // https://github.com/scalamacros/paradise/issues/2: expand manns with type parameters
           probeMacroAnnotation(context, tpt)
         case _ =>

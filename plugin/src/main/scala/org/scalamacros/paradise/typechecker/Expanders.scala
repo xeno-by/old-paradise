@@ -20,7 +20,7 @@ trait Expanders {
     val expanderErrorGen = new ErrorGen(namer.typer)
     import expanderErrorGen._
 
-    def prepareAnnotationMacro(ann: Tree, mann: Symbol, sym: Symbol, annottee: Tree, expandee: Tree): Tree = {
+    def prepareOldAnnotationMacro(ann: Tree, mann: Symbol, sym: Symbol, annottee: Tree, expandee: Tree): Tree = {
       val companion = if (expandee.isInstanceOf[ClassDef]) patchedCompanionSymbolOf(sym, context) else NoSymbol
       val companionSource = if (!isWeak(companion)) attachedSource(companion) else EmptyTree
       val expandees = List(annottee, expandee, companionSource).distinct.filterNot(_.isEmpty)
@@ -29,28 +29,7 @@ trait Expanders {
       Apply(prefix, safeExpandees) setPos ann.pos
     }
 
-    def expandAnnotationMacro(original: Tree, expandee: Tree): Option[List[Tree]] = {
-      val sym = original.symbol
-      val companion = if (original.isInstanceOf[ClassDef]) patchedCompanionSymbolOf(sym, context) else NoSymbol
-      val wasWeak = isWeak(companion)
-      val wasTransient = companion == NoSymbol || companion.isSynthetic
-      def rollThroughImports(context: Context): Context = {
-        if (context.isInstanceOf[ImportContext]) rollThroughImports(context.outer)
-        else context
-      }
-      val typer = {
-        // expanding at top level => allow the macro to see everything
-        if (sym.isTopLevel) newTyper(context)
-        // expanding at template level => only allow to see outside of the enclosing class
-        // we have to skip two contexts:
-        //  1) the Template context that hosts members
-        //  2) the ImplDef context that hosts type params (and just them?)
-        // upd. actually, i don't think we should skip the second context
-        // that doesn't buy us absolutely anything wrt robustness
-        else if (sym.owner.isClass) newTyper(rollThroughImports(context).outer)
-        // expanding at block level => only allow to see outside of the block
-        else newTyper(rollThroughImports(context).outer)
-      }
+    def expandOldAnnotationMacro(original: Tree, annotationSym: Symbol, annotationTree: Tree, expandees: List[Tree]): Option[List[Tree]] = {
       def onlyIfExpansionAllowed[T](expand: => Option[T]): Option[T] = {
         if (settings.Ymacroexpand.value == settings.MacroExpand.None) None
         else {
@@ -59,12 +38,52 @@ trait Expanders {
           catch { case ex: Exception => settings.Ymacroexpand.value = oldYmacroexpand; throw ex }
         }
       }
-      def expand(): Option[Tree] = (new DefMacroExpander(typer, expandee, NOmode, WildcardType) {
-        override def onSuccess(expanded: Tree) = expanded
-      })(expandee) match {
-        case tree if tree.isErroneous => None
-        case tree => Some(tree)
+      def expand(): Option[Tree] = {
+        def rollThroughImports(context: Context): Context = {
+          if (context.isInstanceOf[ImportContext]) rollThroughImports(context.outer)
+          else context
+        }
+        val typer = {
+          // expanding at top level => allow the macro to see everything
+          if (original.symbol.isTopLevel) newTyper(context)
+          // expanding at template level => only allow to see outside of the enclosing class
+          // we have to skip two contexts:
+          //  1) the Template context that hosts members
+          //  2) the ImplDef context that hosts type params (and just them?)
+          // upd. actually, i don't think we should skip the second context
+          // that doesn't buy us absolutely anything wrt robustness
+          else if (original.symbol.owner.isClass) newTyper(rollThroughImports(context).outer)
+          // expanding at block level => only allow to see outside of the block
+          else newTyper(rollThroughImports(context).outer)
+        }
+        val expandee = {
+          val annotationMacroSym = annotationSym.info.member(nme.macroTransform)
+          val prefix = Select(annotationTree, nme.macroTransform) setSymbol annotationMacroSym setPos annotationTree.pos
+          Apply(prefix, expandees) setPos annotationTree.pos
+        }
+        (new DefMacroExpander(typer, expandee, NOmode, WildcardType) {
+          override def onSuccess(expanded: Tree) = expanded
+        })(expandee) match {
+          case tree if tree.isErroneous => None
+          case tree => Some(tree)
+        }
       }
+      extractAndValidateExpansions(original, annotationTree, () => onlyIfExpansionAllowed(expand()))
+    }
+
+    def expandNewAnnotationMacro(original: Tree, annotationSym: Symbol, annotationTree: Tree, expandees: List[Tree]): Option[List[Tree]] = {
+      println(original)
+      println(annotationSym)
+      println(annotationTree)
+      println(expandees)
+      ???
+    }
+
+    private def extractAndValidateExpansions(original: Tree, annotation: Tree, computeExpansion: () => Option[Tree]): Option[List[Tree]] = {
+      val sym = original.symbol
+      val companion = if (original.isInstanceOf[ClassDef]) patchedCompanionSymbolOf(sym, context) else NoSymbol
+      val wasWeak = isWeak(companion)
+      val wasTransient = companion == NoSymbol || companion.isSynthetic
       def extract(expanded: Tree): List[Tree] = expanded match {
         case Block(stats, Literal(Constant(()))) => stats // ugh
         case tree => List(tree)
@@ -90,8 +109,8 @@ trait Expanders {
                   attachExpansion(companion, List(expandedCompanion))
                   Some(expanded)
                 case _ =>
-                  if (wasWeak) MacroAnnotationTopLevelClassWithoutCompanionBadExpansion(expandee)
-                  else MacroAnnotationTopLevelClassWithCompanionBadExpansion(expandee)
+                  if (wasWeak) MacroAnnotationTopLevelClassWithoutCompanionBadExpansion(annotation)
+                  else MacroAnnotationTopLevelClassWithCompanionBadExpansion(annotation)
                   None
               }
             case ModuleDef(_, originalName, _) =>
@@ -100,7 +119,7 @@ trait Expanders {
                   attachExpansion(sym, List(expandedModule))
                   Some(expanded)
                 case _ =>
-                  MacroAnnotationTopLevelModuleBadExpansion(expandee)
+                  MacroAnnotationTopLevelModuleBadExpansion(annotation)
                   None
               }
           }
@@ -118,7 +137,7 @@ trait Expanders {
         }
       }
       for {
-        lowlevelExpansion <- onlyIfExpansionAllowed(expand())
+        lowlevelExpansion <- computeExpansion()
         expansion <- Some(extract(lowlevelExpansion))
         duplicated = expansion.map(duplicateAndKeepPositions)
         validatedExpansion <- validate(duplicated)
