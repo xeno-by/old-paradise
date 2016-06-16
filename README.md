@@ -28,4 +28,4 @@ $ scalac -cp . -Xplugin:<paradise> Test.scala && scala Test
 hello world
 ```
 
-Visit Eugene Burmako's ScalaDays NYC talk to learn more: [http://event.scaladays.org/scaladays-nyc-2016#!#schedulePopupExtras-7540](http://event.scaladays.org/scaladays-nyc-2016#!#schedulePopupExtras-7540).
+Visit Eugene Burmako's ScalaDays Berlin talk to learn more: [http://event.scaladays.org/scaladays-berlin-2016#!#schedulePopupExtras-7598](http://event.scaladays.org/scaladays-berlin-2016#!#schedulePopupExtras-7598).
