@@ -19,7 +19,7 @@ trait Symbols {
       sym.isClass && {
         val MetaInlineClass = rootMirror.getClassIfDefined("scala.meta.internal.inline.inline")
         val applyMethod = sym.info.decl(TermName("apply"))
-        val applyImplMethod = sym.companionSymbol.info.decl(TermName("apply$impl"))
+        val applyImplMethod = sym.owner.info.decl(TermName(sym.name + "$impl")).info.decl(TermName("apply$impl"))
         applyMethod != NoSymbol && applyMethod.initialize.annotations.exists(_.tpe.typeSymbol == MetaInlineClass) && applyImplMethod.exists
       }
     }

@@ -118,7 +118,7 @@ trait Expanders {
             m_findMacroClassLoader.invoke(analyzer).asInstanceOf[ClassLoader]
           }
           val annotationModuleClass = {
-            try Class.forName(annotationSym.fullName + "$", true, classloader)
+            try Class.forName(annotationSym.fullName + "$impl$", true, classloader)
             catch {
               case ex: Throwable =>
               issueNormalTypeError(annotationTree, MacroAnnotationNotExpandedMessage)(namer.context)
