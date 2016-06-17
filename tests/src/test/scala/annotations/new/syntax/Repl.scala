@@ -24,17 +24,17 @@ class NewRepl extends ReplSuite {
   test("new macro annotations compile with scala.meta") {
     assert(repl("""
       |import scala.meta._
-      |object main {
-      |  inline def apply(x: Int)(defns: Any) = ???
+      |class main(x: Int) {
+      |  inline def apply(defns: Any) = ???
       |}
     """.stripMargin.trim) === """
       |scala> import scala.meta._
       |import scala.meta._
       |
-      |scala> object main {
-      |  inline def apply(x: Int)(defns: Any) = ???
+      |scala> class main(x: Int) {
+      |  inline def apply(defns: Any) = ???
       |}
-      |defined object main
+      |defined class main
     """.stripMargin.trim)
   }
 }

@@ -16,10 +16,10 @@ trait Symbols {
       sym.isClass && sym.hasFlag(MACRO)
     }
     def isNewMacroAnnotation = {
-      sym.isModule && {
+      sym.isClass && {
         val MetaInlineClass = rootMirror.getClassIfDefined("scala.meta.internal.inline.inline")
         val applyMethod = sym.info.decl(TermName("apply"))
-        val applyImplMethod = sym.info.decl(TermName("apply$impl"))
+        val applyImplMethod = sym.companionSymbol.info.decl(TermName("apply$impl"))
         applyMethod != NoSymbol && applyMethod.initialize.annotations.exists(_.tpe.typeSymbol == MetaInlineClass) && applyImplMethod.exists
       }
     }

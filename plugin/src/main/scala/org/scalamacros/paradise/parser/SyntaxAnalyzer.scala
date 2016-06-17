@@ -82,66 +82,99 @@ abstract class SyntaxAnalyzer extends NscSyntaxAnalyzer {
 
     // TODO: In the future, it would make sense to perform this transformation during typechecking.
     // However that strategy is going to be much more complicated, so it doesn't fit this prototype.
-    override def defOrDcl(pos: Offset, mods: Modifiers): List[Tree] = {
-      val result = super.defOrDcl(pos, mods)
-      result match {
-        case List(original @ DefDef(mods, name, tparams, vparamss, tpt, rhs)) =>
-          def isInline(tpt: Tree) = MetaInlineClass != NoSymbol && tpt.tpe != null && tpt.tpe.typeSymbol == MetaInlineClass
-          val inlines = mods.annotations.collect{ case ann @ Apply(Select(New(tpt), nme.CONSTRUCTOR), Nil) if isInline(tpt) => ann }
-          if (inlines.nonEmpty) {
-            // NOTE: Here's the sketch of the proposed translation scheme:
-            //   * Retain the original signature with the body replaced by ???
-            //     (for the analogue of def macros, we can probably turn it into = macro name$impl`,
-            //     but for macro annotations it doesn't matter anyway, since it's invoked differently).
-            //   * Create a synthetic impl method name$impl that contains a macro context,
-            //     replaces type parameters, value parameters as well as the return type with c.Tree.
-            //   * Transplant the body to the synthetic method according to the high-friction principle.
-            //     Namely: everything is wrapped in an enclosing quasiquote, meta calls are transformed into unquotes.
-            //
-            // object main {
-            //   inline def apply()(defns: Any) = body
-            // }
-            // <=======>
-            // object main {
-            //   @inline def apply()(defns: Any) = ???
-            //   private def apply$impl()(defns: scala.meta.Tree): scala.meta.Tree = {
-            //     q"[[ body ]]"
-            //   }
-            // }
-            def mkImplVtparam(tdef: TypeDef): ValDef = {
-              atPos(tdef.pos.focus)(ValDef(Modifiers(Flags.PARAM), tdef.name.toTermName, Ident(MetaTypeClass), EmptyTree))
-            }
-            def mkImplVparam(vdef: ValDef): ValDef = {
-              atPos(vdef.pos.focus)(ValDef(Modifiers(Flags.PARAM), vdef.name, Ident(MetaTreeClass), EmptyTree))
-            }
-            def mkImplTpt(tpt: Tree): Tree = {
-              atPos(tpt.pos.focus)(Ident(MetaTreeClass))
-            }
-            def mkImplBody(body: Tree): Tree = atPos(body.pos.focus)({
-              object transformer extends Transformer {
-                override def transform(tree: Tree): Tree = tree match {
-                  // TODO: In the future, it would make sense to perform this transformation during typechecking.
-                  // However that strategy is going to be much more complicated, so it doesn't fit this prototype.
-                  case Apply(Ident(TermName("meta")), List(arg)) => super.transform(arg)
-                  case tree => super.transform(tree)
+
+    override def topStat: PartialFunction[Token, List[Tree]] = {
+      case PACKAGE  =>
+        packageOrPackageObject(in.skipToken()) :: Nil
+      case IMPORT =>
+        in.flushDoc
+        importClause()
+      case _ if isAnnotation || isTemplateIntro || isModifier =>
+        joinComment(translateNestedInlineDefs(topLevelTmplDef))
+    }
+
+    // NOTE: Here's the sketch of the proposed translation scheme:
+    //   * Retain the original signature with the body replaced by ???
+    //     (for the analogue of def macros, we can probably turn it into = macro name$impl`,
+    //     but for macro annotations it doesn't matter anyway, since it's invoked differently).
+    //   * Create a synthetic impl method name$impl that contains a macro context,
+    //     replaces type parameters, value parameters as well as the return type with c.Tree.
+    //   * Transplant the body to the synthetic method according to the high-friction principle.
+    //     Namely: everything is wrapped in an enclosing quasiquote, meta calls are transformed into unquotes.
+    //
+    // TODO: We need to think how exactly we want to make this work with objects
+    // that define inline defs. Do we want to define another object on the side?
+    // Do we want to have the synthetic $impl tag along in the original object?
+    //
+    // class main {
+    //   inline def apply(defns: Any) = body
+    // }
+    // <=======>
+    // class main {
+    //   @inline def apply(defns: Any) = ???
+    // }
+    // object main$impl {
+    //   def apply$impl(defns: scala.meta.Tree): scala.meta.Tree = {
+    //     q"[[ body ]]"
+    //   }
+    // }
+    private def translateNestedInlineDefs(tree: Tree): List[Tree] = {
+      tree match {
+        case stat @ ClassDef(mods, name, tparams, templ @ Template(parents, self, stats)) =>
+          val xstats1 = stats.map {
+            case stat @ DefDef(mods, name, tparams, vparamss, tpt, rhs) =>
+              def isInline(tpt: Tree) = MetaInlineClass != NoSymbol && tpt.tpe != null && tpt.tpe.typeSymbol == MetaInlineClass
+              val inlines = mods.annotations.collect{ case ann @ Apply(Select(New(tpt), nme.CONSTRUCTOR), Nil) if isInline(tpt) => ann }
+              if (inlines.nonEmpty) {
+                def mkImplVtparam(tdef: TypeDef): ValDef = {
+                  atPos(tdef.pos.focus)(ValDef(Modifiers(Flags.PARAM), tdef.name.toTermName, Ident(MetaTypeClass), EmptyTree))
                 }
+                def mkImplVparam(vdef: ValDef): ValDef = {
+                  atPos(vdef.pos.focus)(ValDef(Modifiers(Flags.PARAM), vdef.name, Ident(MetaTreeClass), EmptyTree))
+                }
+                def mkImplTpt(tpt: Tree): Tree = {
+                  atPos(tpt.pos.focus)(Ident(MetaTreeClass))
+                }
+                def mkImplBody(body: Tree): Tree = atPos(body.pos.focus)({
+                  object transformer extends Transformer {
+                    override def transform(tree: Tree): Tree = tree match {
+                      // TODO: In the future, it would make sense to perform this transformation during typechecking.
+                      // However that strategy is going to be much more complicated, so it doesn't fit this prototype.
+                      case Apply(Ident(TermName("meta")), List(arg)) => super.transform(arg)
+                      case tree => super.transform(tree)
+                    }
+                  }
+                  transformer.transform(body)
+                })
+                val signatureMethod = atPos(stat.pos.focus)(DefDef(mods, name, tparams, vparamss, tpt, Ident(Predef_???)))
+                val implMethod = atPos(stat.pos.focus)({
+                  val implVtparamss = if (tparams.nonEmpty) List(tparams.map(mkImplVtparam)) else Nil
+                  val implVparamss = implVtparamss ++ mmap(vparamss)(mkImplVparam)
+                  val implTpt = mkImplTpt(tpt)
+                  val implBody = mkImplBody(rhs)
+                  DefDef(Modifiers(Flags.PRIVATE), TermName(name + "$impl"), Nil, implVparamss, implTpt, implBody)
+                })
+                (signatureMethod, implMethod)
+              } else {
+                (stat, EmptyTree)
               }
-              transformer.transform(body)
-            })
-            val signatureMethod = atPos(original.pos.focus)(DefDef(mods, name, tparams, vparamss, tpt, Ident(Predef_???)))
-            val implMethod = atPos(original.pos.focus)({
-              val implVtparamss = if (tparams.nonEmpty) List(tparams.map(mkImplVtparam)) else Nil
-              val implVparamss = implVtparamss ++ mmap(vparamss)(mkImplVparam)
-              val implTpt = mkImplTpt(tpt)
-              val implBody = mkImplBody(rhs)
-              DefDef(Modifiers(Flags.PRIVATE), TermName(name + "$impl"), Nil, implVparamss, implTpt, implBody)
-            })
-            List(signatureMethod, implMethod)
-          } else {
-            result
+            case stat =>
+              (stat, EmptyTree)
           }
-        case _ =>
-          result
+          val (stats1, impls1) = xstats1.unzip
+          if (impls1.exists(_.nonEmpty)) {
+            val stat1 = atPos(stat.pos)(ClassDef(mods, name, tparams, atPos(templ.pos)(Template(parents, self, stats1))))
+            val implmstats = {
+              val syntheticCtor = atPos(stat.pos.focus)(DefDef(Modifiers(), termNames.CONSTRUCTOR, List(), List(List()), TypeTree(), Block(List(Apply(Select(Super(This(typeNames.EMPTY), typeNames.EMPTY), termNames.CONSTRUCTOR), List())), Literal(Constant(())))))
+              syntheticCtor +: impls1.filter(_.nonEmpty)
+            }
+            val implmdef = atPos(stat.pos.focus)(ModuleDef(NoMods, TermName(name + "$impl"), Template(List(Ident(TypeName("AnyRef"))), noSelfType, implmstats)))
+            List(stat1, implmdef)
+          } else {
+            List(stat)
+          }
+        case other =>
+          List(other)
       }
     }
   }

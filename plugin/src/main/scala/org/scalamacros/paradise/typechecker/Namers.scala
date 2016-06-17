@@ -566,7 +566,7 @@ trait Namers {
               else NoSymbol
             }
           }
-          resolve(name).orElse(resolve(name.toTermName))
+          resolve(name)
         case Select(qualtree, name) => // TODO: be more precise wrt typedSelect
           def resolve(name: Name): Symbol = {
             val qual = probeMacroAnnotation(context, qualtree)

@@ -10,8 +10,8 @@ class Transform extends ToolSuite {
     val writer = new PrintWriter(new File(testDir.getAbsolutePath + File.separator + "test.scala"))
     writer.write("""
       |import scala.meta._
-      |object main {
-      |  inline def apply()(defns: Any) = meta {
+      |class main {
+      |  inline def apply(defns: Any) = meta {
       |    val q"${obj: meta.Defn.Object}" = defns
       |    println(obj)
       |    ???
@@ -27,13 +27,19 @@ class Transform extends ToolSuite {
       |[[syntax trees at end of                     typer]] // test.scala
       |package <empty> {
       |  import scala.meta._;
-      |  object main extends scala.AnyRef {
-      |    def <init>(): main.type = {
+      |  class main extends scala.AnyRef {
+      |    def <init>(): main = {
       |      main.super.<init>();
       |      ()
       |    };
-      |    @scala.meta.internal.inline.inline def apply()(defns: Any): Nothing = ???;
-      |    private def apply$impl()(defns: scala.meta.Tree): scala.meta.Tree = {
+      |    @scala.meta.internal.inline.inline def apply(defns: Any): Nothing = ???
+      |  };
+      |  object main$impl extends scala.AnyRef {
+      |    def <init>(): main$impl.type = {
+      |      main$impl.super.<init>();
+      |      ()
+      |    };
+      |    private def apply$impl(defns: scala.meta.Tree): scala.meta.Tree = {
       |      val obj: meta.Defn.Object = (defns: scala.meta.Tree @unchecked) match {
       |        case {
       |  final class $anon extends scala.AnyRef {
