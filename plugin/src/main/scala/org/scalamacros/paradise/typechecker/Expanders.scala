@@ -82,9 +82,16 @@ trait Expanders {
           }
           val metaSource = metaInput.parse[MetaSource].get
           def toMeta(tree: Tree): MetaTree = {
+            var minTree: MetaTree = null
             def captures(metaPos: MetaPosition, pos: Position) = metaPos.start.offset <= pos.point && pos.point <= metaPos.end.offset
-            metaSource.traverse { case metaTree: MetaTree if metaTree != metaSource && captures(metaTree.pos, tree.pos) => return metaTree }
-            sys.error(s"fatal error: couldn't find ${tree.pos.toString} in ${metaSource.show[MetaPositions]}")
+            def updatesMin(metaPos: MetaPosition, minPos: MetaPosition) = metaPos.end.offset - metaPos.start.offset < minPos.end.offset - minPos.start.offset
+            metaSource.traverse {
+              case metaTree: MetaTree if metaTree != metaSource && metaTree.is[scala.meta.Defn] && captures(metaTree.pos, tree.pos) && (minTree == null || updatesMin(metaTree.pos, minTree.pos)) =>
+                minTree = metaTree
+            }
+            if(minTree == null)
+              sys.error(s"fatal error: couldn't find ${tree.pos.toString} in ${metaSource.show[MetaPositions]}")
+            minTree
           }
 
           val treeInfo.Applied(Select(New(_), nme.CONSTRUCTOR), targs, vargss) = annotationTree
@@ -118,7 +125,7 @@ trait Expanders {
             m_findMacroClassLoader.invoke(analyzer).asInstanceOf[ClassLoader]
           }
           val annotationModuleClass = {
-            try Class.forName(annotationSym.fullName + "$", true, classloader)
+            try Class.forName(annotationSym.fullName + "$impl$", true, classloader)
             catch {
               case ex: Throwable =>
               issueNormalTypeError(annotationTree, MacroAnnotationNotExpandedMessage)(namer.context)
