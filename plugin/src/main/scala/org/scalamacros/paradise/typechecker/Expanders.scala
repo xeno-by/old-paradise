@@ -111,7 +111,13 @@ trait Expanders {
               case defn: scala.meta.Defn.Def => defn.copy(mods = Nil)
               case defn: scala.meta.Defn.Macro => defn.copy(mods = Nil)
               case defn: scala.meta.Defn.Type => defn.copy(mods = Nil)
-              case defn: scala.meta.Defn.Class => defn.copy(mods = Nil)
+              case defn: scala.meta.Defn.Class =>
+                val filtredMods = defn.mods.filter {
+                  case scala.meta.Mod.Annot(body: scala.meta.Term) =>
+                    false // TODO: Filter out only the current annotation
+                  case _ => true
+                }
+                defn.copy(mods = filtredMods)
               case defn: scala.meta.Defn.Trait => defn.copy(mods = Nil)
               case defn: scala.meta.Defn.Object => defn.copy(mods = Nil)
             }
