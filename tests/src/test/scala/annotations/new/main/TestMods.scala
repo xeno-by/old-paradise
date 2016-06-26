@@ -12,6 +12,10 @@ case class Test3()
 @main.identity()
 case class Test4()
 
+@identity object Test5 {
+  override val toString = "Test5"
+}
+
 @main object TestMods {
   case class Message(msg: String)
   println(Message("hello world").msg)
@@ -20,4 +24,5 @@ case class Test4()
   println(Test2().productPrefix)
   println(Test3().productPrefix)
   println(Test4().productPrefix)
+  println(Test5.toString)
 }

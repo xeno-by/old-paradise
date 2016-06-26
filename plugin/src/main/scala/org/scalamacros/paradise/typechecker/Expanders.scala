@@ -73,6 +73,14 @@ trait Expanders {
 
     // TODO: a full-fledged reflect <-> meta converter is necessary for robust operation here
     def expandNewAnnotationMacro(original: Tree, annotationSym: Symbol, annotationTree: Tree, expandees: List[Tree]): Option[List[Tree]] = {
+      def filterMods(mods: Seq[scala.meta.Mod]) =
+        mods.filter {
+          case scala.meta.Mod.Annot(body: scala.meta.Term) =>
+            false // TODO: Filter out only the current annotation
+          case _ =>
+            true
+        }
+
       def expand(): Option[Tree] = {
         try {
           val input = original.pos.source
@@ -102,24 +110,18 @@ trait Expanders {
             val metaOriginal = toMeta(original)
             val metaOriginalWithoutAnnots = metaOriginal.transform {
               // TODO: detect and remove just annotteeTree
-              case defn: scala.meta.Decl.Val => defn.copy(mods = Nil)
-              case defn: scala.meta.Decl.Var => defn.copy(mods = Nil)
-              case defn: scala.meta.Decl.Def => defn.copy(mods = Nil)
-              case defn: scala.meta.Decl.Type => defn.copy(mods = Nil)
-              case defn: scala.meta.Defn.Val => defn.copy(mods = Nil)
-              case defn: scala.meta.Defn.Var => defn.copy(mods = Nil)
-              case defn: scala.meta.Defn.Def => defn.copy(mods = Nil)
-              case defn: scala.meta.Defn.Macro => defn.copy(mods = Nil)
-              case defn: scala.meta.Defn.Type => defn.copy(mods = Nil)
-              case defn: scala.meta.Defn.Class =>
-                val filtredMods = defn.mods.filter {
-                  case scala.meta.Mod.Annot(body: scala.meta.Term) =>
-                    false // TODO: Filter out only the current annotation
-                  case _ => true
-                }
-                defn.copy(mods = filtredMods)
-              case defn: scala.meta.Defn.Trait => defn.copy(mods = Nil)
-              case defn: scala.meta.Defn.Object => defn.copy(mods = Nil)
+              case defn: scala.meta.Decl.Val => defn.copy(mods = filterMods(defn.mods))
+              case defn: scala.meta.Decl.Var => defn.copy(mods = filterMods(defn.mods))
+              case defn: scala.meta.Decl.Def => defn.copy(mods = filterMods(defn.mods))
+              case defn: scala.meta.Decl.Type => defn.copy(mods = filterMods(defn.mods))
+              case defn: scala.meta.Defn.Val => defn.copy(mods = filterMods(defn.mods))
+              case defn: scala.meta.Defn.Var => defn.copy(mods = filterMods(defn.mods))
+              case defn: scala.meta.Defn.Def => defn.copy(mods = filterMods(defn.mods))
+              case defn: scala.meta.Defn.Macro => defn.copy(mods = filterMods(defn.mods))
+              case defn: scala.meta.Defn.Type => defn.copy(mods = filterMods(defn.mods))
+              case defn: scala.meta.Defn.Class => defn.copy(mods = filterMods(defn.mods))
+              case defn: scala.meta.Defn.Trait => defn.copy(mods = filterMods(defn.mods))
+              case defn: scala.meta.Defn.Object => defn.copy(mods = filterMods(defn.mods))
             }
             List(metaOriginalWithoutAnnots)
           }
