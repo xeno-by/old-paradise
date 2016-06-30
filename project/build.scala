@@ -4,8 +4,11 @@ import sbtassembly.Plugin._
 import AssemblyKeys._
 
 object build extends Build {
+  lazy val ScalaVersions = Seq("2.11.8")
+  lazy val MetaVersion = "1.1.0-SNAPSHOT"
+
   lazy val sharedSettings = Defaults.defaultSettings ++ Seq(
-    scalaVersion := "2.11.8",
+    scalaVersion := ScalaVersions.head,
     crossVersion := CrossVersion.full,
     version := "3.0.0-SNAPSHOT",
     organization := "org.scalamacros",
@@ -77,7 +80,7 @@ object build extends Build {
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-library" % _),
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-reflect" % _),
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-compiler" % _),
-    libraryDependencies += "org.scalameta" %% "scalameta" % "0.20.0",
+    libraryDependencies += "org.scalameta" %% "scalameta" % MetaVersion,
     test in assembly := {},
     logLevel in assembly := Level.Error,
     jarName in assembly := name.value + "_" + scalaVersion.value + "-" + version.value + "-assembly.jar",
@@ -156,7 +159,7 @@ object build extends Build {
   ) settings (
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-reflect" % _),
     libraryDependencies <+= (scalaVersion)("org.scala-lang" % "scala-compiler" % _),
-    libraryDependencies += "org.scalameta" %% "scalameta" % "1.0.0",
+    libraryDependencies += "org.scalameta" %% "scalameta" % MetaVersion,
     libraryDependencies += "org.scalatest" % "scalatest_2.11.0-M3" % "1.9.1b" % "test",
     libraryDependencies += "org.scalacheck" % "scalacheck_2.11" % "1.10.2-SNAPSHOT" % "test",
     scalacOptions += "-Ywarn-unused-import",
