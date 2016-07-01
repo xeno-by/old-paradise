@@ -152,7 +152,7 @@ abstract class SyntaxAnalyzer extends NscSyntaxAnalyzer {
                   val implVparamss = implVtparamss ++ mmap(vparamss)(mkImplVparam)
                   val implTpt = mkImplTpt(tpt)
                   val implBody = mkImplBody(rhs)
-                  DefDef(Modifiers(Flags.PRIVATE), TermName(name + "$impl"), Nil, implVparamss, implTpt, implBody)
+                  DefDef(NoMods, TermName(name + "$impl"), Nil, implVparamss, implTpt, implBody)
                 })
                 (signatureMethod, implMethod)
               } else {

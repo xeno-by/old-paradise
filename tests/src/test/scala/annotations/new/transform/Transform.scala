@@ -39,7 +39,7 @@ class Transform extends ToolSuite {
       |      main$impl.super.<init>();
       |      ()
       |    };
-      |    private def apply$impl(defns: scala.meta.Tree): scala.meta.Tree = {
+      |    def apply$impl(defns: scala.meta.Tree): scala.meta.Tree = {
       |      val obj: meta.Defn.Object = (defns: scala.meta.Tree @unchecked) match {
       |        case {
       |  final class $anon extends scala.AnyRef {
