@@ -30,7 +30,7 @@ abstract class SyntaxAnalyzer extends NscSyntaxAnalyzer {
     // override def withPatches(patches: List[BracePatch]): UnitParser = new UnitParser(unit, patches)
 
     private val MetaInlineClass = rootMirror.getClassIfDefined("scala.meta.internal.inline.inline")
-    private val MetaTreeClass = rootMirror.getClassIfDefined("scala.meta.Tree")
+    private val MetaStatClass = rootMirror.getClassIfDefined("scala.meta.Stat")
     private val MetaTypeClass = rootMirror.getClassIfDefined("scala.meta.Type")
 
     private val INLINEkw = TermName("inline")
@@ -40,7 +40,7 @@ abstract class SyntaxAnalyzer extends NscSyntaxAnalyzer {
     override def isDclIntro: Boolean = isInline || super.isDclIntro
 
     private def markInline(offset: Offset, mods: Modifiers): Modifiers = {
-      if (MetaInlineClass != NoSymbol && MetaTreeClass != NoSymbol) mods.withAnnotations(List(atPos(offset)(New(MetaInlineClass))))
+      if (MetaInlineClass != NoSymbol && MetaStatClass != NoSymbol) mods.withAnnotations(List(atPos(offset)(New(MetaInlineClass))))
       else { syntaxError(offset, "new-style (\"inline\") macros require scala.meta"); mods }
     }
 
@@ -130,10 +130,10 @@ abstract class SyntaxAnalyzer extends NscSyntaxAnalyzer {
                   atPos(tdef.pos.focus)(ValDef(Modifiers(Flags.PARAM), tdef.name.toTermName, Ident(MetaTypeClass), EmptyTree))
                 }
                 def mkImplVparam(vdef: ValDef): ValDef = {
-                  atPos(vdef.pos.focus)(ValDef(Modifiers(Flags.PARAM), vdef.name, Ident(MetaTreeClass), EmptyTree))
+                  atPos(vdef.pos.focus)(ValDef(Modifiers(Flags.PARAM), vdef.name, Ident(MetaStatClass), EmptyTree))
                 }
                 def mkImplTpt(tpt: Tree): Tree = {
-                  atPos(tpt.pos.focus)(Ident(MetaTreeClass))
+                  atPos(tpt.pos.focus)(Ident(MetaStatClass))
                 }
                 def mkImplBody(body: Tree): Tree = atPos(body.pos.focus)({
                   object transformer extends Transformer {
