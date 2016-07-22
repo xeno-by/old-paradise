@@ -106,9 +106,8 @@ trait Expanders {
           val metaTargs = targs.map(toMeta)
           val metaVargss = vargss.map(_.map(toMeta))
           val metaExpandees = {
-            expandees.flatMap { expandee =>
-              val metaExpandee = toMeta(expandee)
-              val metaExpandeeWithoutAnnots = metaExpandee.transform {
+            expandees.map { expandee =>
+              toMeta(expandee).transform {
                 // TODO: detect and remove just annotteeTree
                 case defn: scala.meta.Decl.Val => defn.copy(mods = filterMods(defn.mods))
                 case defn: scala.meta.Decl.Var => defn.copy(mods = filterMods(defn.mods))
@@ -123,7 +122,6 @@ trait Expanders {
                 case defn: scala.meta.Defn.Trait => defn.copy(mods = filterMods(defn.mods))
                 case defn: scala.meta.Defn.Object => defn.copy(mods = filterMods(defn.mods))
               }
-              List(metaExpandeeWithoutAnnots)
             }
           }
           val metaArgs = metaTargs ++ metaVargss.flatten ++ metaExpandees
