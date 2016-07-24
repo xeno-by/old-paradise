@@ -124,7 +124,11 @@ trait Expanders {
               }
             }
           }
-          val metaArgs = metaTargs ++ metaVargss.flatten ++ metaExpandees
+          val metaArg = (metaTargs ++ metaVargss.flatten ++ metaExpandees) match {
+            case Nil => Nil
+            case tree :: Nil => tree
+            case list @ _ :: tail => scala.meta.Term.Block(list.asInstanceOf[Seq[scala.meta.Stat]])
+          }
 
           val classloader = {
             val m_findMacroClassLoader = analyzer.getClass.getMethods().find(_.getName == "findMacroClassLoader").get
@@ -145,7 +149,7 @@ trait Expanders {
           val metaExpansion = {
             // NOTE: this method is here for correct stacktrace unwrapping
             def macroExpandWithRuntime() = {
-              try newStyleMacroMeth.invoke(annotationModule, metaArgs.asInstanceOf[List[AnyRef]].toArray: _*).asInstanceOf[MetaTree]
+              try newStyleMacroMeth.invoke(annotationModule, metaArg).asInstanceOf[MetaTree]
               catch {
                 case ex: Throwable =>
                   val realex = ReflectionUtils.unwrapThrowable(ex)

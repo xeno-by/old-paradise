@@ -6,8 +6,8 @@ import scala.meta._
 @compileTimeOnly("@classMacro not expanded")
 class classMacro extends scala.annotation.StaticAnnotation {
 
-  inline def apply(classDefn: Defn.Class, companionDefn: Defn.Object): Stat = meta {
-    val classTree: Stat = {
+  inline def apply(stats: Any): Stat = meta {
+    def extractClass(classDefn: Defn.Class): Stat = {
       val q"""
         ..$mods class $tname[..$tparams] ..$ctorMods (...$paramss) extends { ..$earlyStats } with ..$ctorcalls {
           $selfParam =>
@@ -22,13 +22,13 @@ class classMacro extends scala.annotation.StaticAnnotation {
       """
     }
 
-    val companionTree: Stat = {
+    def extractObj(objDefn: Defn.Object): Stat = {
       val q"""
         ..$mods object $tname extends { ..$earlyStats } with ..$ctorcalls {
           $selfParam =>
           ..$stats
         }
-      """ = companionDefn
+      """ = objDefn
       q"""
         ..$mods object $tname extends { ..$earlyStats } with ..$ctorcalls {
           $selfParam =>
@@ -37,7 +37,11 @@ class classMacro extends scala.annotation.StaticAnnotation {
       """
     }
 
-    Term.Block(scala.collection.immutable.Seq(classTree, companionTree))
+    stats match {
+      case Term.Block(Seq(classDefn: Defn.Class, objDefn: Defn.Object)) =>
+        Term.Block(scala.collection.immutable.Seq(extractClass(classDefn), extractObj(objDefn)))
+      case classDefn: Defn.Class => extractClass(classDefn)
+    }
   }
 
 }

@@ -11,3 +11,7 @@ trait Bar {
 object Foo extends Bar {
   val j: Int = 2
 }
+
+@classMacro class Baz(id: Int) {
+  val a: String = "abc"
+}
