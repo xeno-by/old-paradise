@@ -125,7 +125,7 @@ trait Expanders {
             }
           }
           val metaArgs = metaTargs ++ metaVargss.flatten ++ List(metaExpandees match {
-            case Nil => throw MacroExpansionException
+            case Nil => abort("Something unexpected happened. Please report the maintainer.")
             case tree :: Nil => tree
             case list @ _ :: tail => scala.meta.Term.Block(list.asInstanceOf[Seq[scala.meta.Stat]])
           })
