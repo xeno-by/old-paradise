@@ -100,8 +100,8 @@ trait ToMtree extends Enrichments
                 m.Term.While(mcond, mbody)
 
               case l.TermNew(ltempl) =>
-                val mtemtl = ltempl.toMtree[m.Template]
-                m.Term.New(mtemtl)
+                val mtempl = ltempl.toMtree[m.Template]
+                m.Term.New(mtempl)
 
               case l.TermParamDef(lmods, lname, ltpt, ldefault) =>
                 val mmods = lmods.toMtrees[m.Mod]
