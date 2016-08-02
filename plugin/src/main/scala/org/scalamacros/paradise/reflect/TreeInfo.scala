@@ -32,7 +32,7 @@ trait TreeInfo {
           val cdef = tree.asInstanceOf[ClassDef]
           val czippers = mods.annotations.map(ann => {
             val mods1 = mods.mapAnnotations(_ diff List(ann))
-            val annottee = PatchedSyntacticClassDef(mods1, name, tparams, constrMods, vparamss, earlyDefs, parents, selfdef, body)
+            val annottee = atPos(tree.pos)(PatchedSyntacticClassDef(mods1, name, tparams, constrMods, vparamss, earlyDefs, parents, selfdef, body))
             AnnotationZipper(ann, annottee, annottee)
           })
           if (!deep) czippers
@@ -41,20 +41,20 @@ trait TreeInfo {
               tparam <- tparams
               AnnotationZipper(ann, tparam1: TypeDef, _) <- loop(tparam, deep = false)
               tparams1 = tparams.updated(tparams.indexOf(tparam), tparam1)
-            } yield AnnotationZipper(ann, tparam1, PatchedSyntacticClassDef(mods, name, tparams1, constrMods, vparamss, earlyDefs, parents, selfdef, body))
+            } yield AnnotationZipper(ann, tparam1, atPos(tree.pos)(PatchedSyntacticClassDef(mods, name, tparams1, constrMods, vparamss, earlyDefs, parents, selfdef, body)))
             val vzippers = for {
               vparams <- vparamss
               vparam <- vparams
               AnnotationZipper(ann, vparam1: ValDef, _) <- loop(vparam, deep = false)
               vparams1 = vparams.updated(vparams.indexOf(vparam), vparam1)
               vparamss1 = vparamss.updated(vparamss.indexOf(vparams), vparams1)
-            } yield AnnotationZipper(ann, vparam1, PatchedSyntacticClassDef(mods, name, tparams, constrMods, vparamss1, earlyDefs, parents, selfdef, body))
+            } yield AnnotationZipper(ann, vparam1, atPos(tree.pos)(PatchedSyntacticClassDef(mods, name, tparams, constrMods, vparamss1, earlyDefs, parents, selfdef, body)))
             czippers ++ tzippers ++ vzippers
           }
         case SyntacticTraitDef(mods, name, tparams, earlyDefs, parents, selfdef, body) =>
           val tdef = tree.asInstanceOf[ClassDef]
           val czippers = mods.annotations.map(ann => {
-            val annottee = tdef.copy(mods = mods.mapAnnotations(_ diff List(ann)))
+            val annottee = atPos(tree.pos)(tdef.copy(mods = mods.mapAnnotations(_ diff List(ann))))
             AnnotationZipper(ann, annottee, annottee)
           })
           if (!deep) czippers
@@ -63,17 +63,17 @@ trait TreeInfo {
               tparam <- tparams
               AnnotationZipper(ann, tparam1: TypeDef, _) <- loop(tparam, deep = false)
               tparams1 = tparams.updated(tparams.indexOf(tparam), tparam1)
-            } yield AnnotationZipper(ann, tparam1, tdef.copy(tparams = tparams1))
+            } yield AnnotationZipper(ann, tparam1, atPos(tree.pos)(tdef.copy(tparams = tparams1)))
             czippers ++ tzippers
           }
         case mdef @ ModuleDef(mods, _, _) =>
           mods.annotations.map(ann => {
-            val annottee = mdef.copy(mods = mods.mapAnnotations(_ diff List(ann)))
+            val annottee = atPos(tree.pos)(mdef.copy(mods = mods.mapAnnotations(_ diff List(ann))))
             AnnotationZipper(ann, annottee, annottee)
           })
         case ddef @ DefDef(mods, _, tparams, vparamss, _, _) =>
           val dzippers = mods.annotations.map(ann => {
-            val annottee = ddef.copy(mods = mods.mapAnnotations(_ diff List(ann)))
+            val annottee = atPos(tree.pos)(ddef.copy(mods = mods.mapAnnotations(_ diff List(ann))))
             AnnotationZipper(ann, annottee, annottee)
           })
           if (!deep) dzippers
@@ -82,24 +82,24 @@ trait TreeInfo {
               tparam <- tparams
               AnnotationZipper(ann, tparam1: TypeDef, _) <- loop(tparam, deep = false)
               tparams1 = tparams.updated(tparams.indexOf(tparam), tparam1)
-            } yield AnnotationZipper(ann, tparam1, ddef.copy(tparams = tparams1))
+            } yield AnnotationZipper(ann, tparam1, atPos(tree.pos)(ddef.copy(tparams = tparams1)))
             val vzippers = for {
               vparams <- vparamss
               vparam <- vparams
               AnnotationZipper(ann, vparam1: ValDef, _) <- loop(vparam, deep = false)
               vparams1 = vparams.updated(vparams.indexOf(vparam), vparam1)
               vparamss1 = vparamss.updated(vparamss.indexOf(vparams), vparams1)
-            } yield AnnotationZipper(ann, vparam1, ddef.copy(vparamss = vparamss1))
+            } yield AnnotationZipper(ann, vparam1, atPos(tree.pos)(ddef.copy(vparamss = vparamss1)))
             dzippers ++ tzippers ++ vzippers
           }
         case vdef @ ValDef(mods, _, _, _) =>
           mods.annotations.map(ann => {
-            val annottee = vdef.copy(mods = mods.mapAnnotations(_ diff List(ann)))
+            val annottee = atPos(tree.pos)(vdef.copy(mods = mods.mapAnnotations(_ diff List(ann))))
             AnnotationZipper(ann, annottee, annottee)
           })
         case tdef @ TypeDef(mods, _, tparams, _) =>
           val tzippers = mods.annotations.map(ann => {
-            val annottee = tdef.copy(mods = mods.mapAnnotations(_ diff List(ann)))
+            val annottee = atPos(tree.pos)(tdef.copy(mods = mods.mapAnnotations(_ diff List(ann))))
             AnnotationZipper(ann, annottee, annottee)
           })
           if (!deep) tzippers
@@ -108,7 +108,7 @@ trait TreeInfo {
               tparam <- tparams
               AnnotationZipper(ann, tparam1: TypeDef, _) <- loop(tparam, deep = false)
               tparams1 = tparams.updated(tparams.indexOf(tparam), tparam1)
-            } yield AnnotationZipper(ann, tparam1, tdef.copy(tparams = tparams1))
+            } yield AnnotationZipper(ann, tparam1, atPos(tree.pos)(tdef.copy(tparams = tparams1)))
             tzippers ++ ttzippers
           }
         case _ =>

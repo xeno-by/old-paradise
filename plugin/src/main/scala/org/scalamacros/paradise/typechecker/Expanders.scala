@@ -106,26 +106,29 @@ trait Expanders {
           val metaTargs = targs.map(toMeta)
           val metaVargss = vargss.map(_.map(toMeta))
           val metaExpandees = {
-            if (expandees.length != 1) sys.error("fatal error: multiple expandees not supported at the moment")
-            val metaOriginal = toMeta(original)
-            val metaOriginalWithoutAnnots = metaOriginal.transform {
-              // TODO: detect and remove just annotteeTree
-              case defn: scala.meta.Decl.Val => defn.copy(mods = filterMods(defn.mods))
-              case defn: scala.meta.Decl.Var => defn.copy(mods = filterMods(defn.mods))
-              case defn: scala.meta.Decl.Def => defn.copy(mods = filterMods(defn.mods))
-              case defn: scala.meta.Decl.Type => defn.copy(mods = filterMods(defn.mods))
-              case defn: scala.meta.Defn.Val => defn.copy(mods = filterMods(defn.mods))
-              case defn: scala.meta.Defn.Var => defn.copy(mods = filterMods(defn.mods))
-              case defn: scala.meta.Defn.Def => defn.copy(mods = filterMods(defn.mods))
-              case defn: scala.meta.Defn.Macro => defn.copy(mods = filterMods(defn.mods))
-              case defn: scala.meta.Defn.Type => defn.copy(mods = filterMods(defn.mods))
-              case defn: scala.meta.Defn.Class => defn.copy(mods = filterMods(defn.mods))
-              case defn: scala.meta.Defn.Trait => defn.copy(mods = filterMods(defn.mods))
-              case defn: scala.meta.Defn.Object => defn.copy(mods = filterMods(defn.mods))
+            expandees.map { expandee =>
+              toMeta(expandee).transform {
+                // TODO: detect and remove just annotteeTree
+                case defn: scala.meta.Decl.Val => defn.copy(mods = filterMods(defn.mods))
+                case defn: scala.meta.Decl.Var => defn.copy(mods = filterMods(defn.mods))
+                case defn: scala.meta.Decl.Def => defn.copy(mods = filterMods(defn.mods))
+                case defn: scala.meta.Decl.Type => defn.copy(mods = filterMods(defn.mods))
+                case defn: scala.meta.Defn.Val => defn.copy(mods = filterMods(defn.mods))
+                case defn: scala.meta.Defn.Var => defn.copy(mods = filterMods(defn.mods))
+                case defn: scala.meta.Defn.Def => defn.copy(mods = filterMods(defn.mods))
+                case defn: scala.meta.Defn.Macro => defn.copy(mods = filterMods(defn.mods))
+                case defn: scala.meta.Defn.Type => defn.copy(mods = filterMods(defn.mods))
+                case defn: scala.meta.Defn.Class => defn.copy(mods = filterMods(defn.mods))
+                case defn: scala.meta.Defn.Trait => defn.copy(mods = filterMods(defn.mods))
+                case defn: scala.meta.Defn.Object => defn.copy(mods = filterMods(defn.mods))
+              }
             }
-            List(metaOriginalWithoutAnnots)
           }
-          val metaArgs = metaTargs ++ metaVargss.flatten ++ metaExpandees
+          val metaArgs = metaTargs ++ metaVargss.flatten ++ List(metaExpandees match {
+            case Nil => abort("Something unexpected happened. Please report the maintainer.")
+            case tree :: Nil => tree
+            case list @ _ :: tail => scala.meta.Term.Block(list.asInstanceOf[Seq[scala.meta.Stat]])
+          })
 
           val classloader = {
             val m_findMacroClassLoader = analyzer.getClass.getMethods().find(_.getName == "findMacroClassLoader").get
